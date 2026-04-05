@@ -39,7 +39,7 @@ log = logging.getLogger("banan-bot")
 # Telethon client
 # ──────────────────────────────────────────────
 
-bot = TelegramClient("banan_bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+bot = TelegramClient("banan_bot", API_ID, API_HASH)
 
 # DB connection (initialized on startup)
 db_conn = None
@@ -436,6 +436,10 @@ async def main():
     
     log.info("Starting Plan Banan Cowork Bot...")
     
+    # Start bot
+    await bot.start(bot_token=BOT_TOKEN)
+    log.info("Bot connected to Telegram")
+    
     # Init DB
     await init_db(DATABASE_URL)
     db_conn = await psycopg.AsyncConnection.connect(DATABASE_URL, row_factory=dict_row)
@@ -454,4 +458,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    bot.loop.run_until_complete(main())
