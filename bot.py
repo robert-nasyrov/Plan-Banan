@@ -126,6 +126,26 @@ async def parse_robert_message(text: str) -> dict | None:
 
 
 # ──────────────────────────────────────────────
+# Command: /discover — shows chat_id and topic_id
+# ──────────────────────────────────────────────
+
+@bot.on(events.NewMessage(pattern='/discover'))
+async def on_discover(event):
+    """Reply with chat_id and topic_id for setup."""
+    chat_id = event.chat_id
+    topic_id = None
+    if event.message.reply_to:
+        topic_id = getattr(event.message.reply_to, 'reply_to_top_id', None) or \
+                   getattr(event.message.reply_to, 'reply_to_msg_id', None)
+    
+    await event.reply(
+        f"chat_id: {chat_id}\n"
+        f"topic_id: {topic_id}\n"
+        f"message_thread_id: {getattr(event.message, 'reply_to', None)}"
+    )
+
+
+# ──────────────────────────────────────────────
 # Event: New scenario in "Сценарии RU"
 # ──────────────────────────────────────────────
 
