@@ -33,8 +33,6 @@ TOPICS = {
     "banan_uz": int(os.getenv("TOPIC_BANAN_UZ", 0)),
 }
 
-# Separate chat "План Банан отдел аниматоров"
-ANIMATORS_CHAT_ID = int(os.getenv("ANIMATORS_CHAT_ID", 0))
 
 # ──────────────────────────────────────────────
 # Team

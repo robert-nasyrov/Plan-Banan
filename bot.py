@@ -24,7 +24,7 @@ from config import (
     API_ID, API_HASH, BOT_TOKEN,
     CLAUDE_API_KEY, CLAUDE_MODEL,
     DATABASE_URL,
-    PLAN_BANAN_GROUP_ID, TOPICS, ANIMATORS_CHAT_ID,
+    PLAN_BANAN_GROUP_ID, TOPICS,
     TEAM, TIMEZONE, DAILY_CHECK_HOUR,
 )
 from db import (
@@ -254,11 +254,12 @@ async def on_robert_message(event):
                 db_conn, ep["id"], "анимация",
                 music_done_at=datetime.now(pytz.utc),
             )
-            # Notify animators in separate chat
+            # Notify animators in music topic
             await bot.send_message(
-                ANIMATORS_CHAT_ID,
+                PLAN_BANAN_GROUP_ID,
                 f"{mention(TEAM['iroda'].username)} {mention(TEAM['sheroz'].username)} "
                 f"Музыка и озвучка для «{ep['title']}» готовы! Можно делать анимацию.",
+                reply_to=TOPICS["music_voiceover"],
             )
             await event.reply("Ирода и Шероз уведомлены.")
     
@@ -305,11 +306,12 @@ async def on_music_uploaded(event):
             music_by=sender.username,
         )
         
-        # Notify animators in separate chat
+        # Notify animators in music topic
         await bot.send_message(
-            ANIMATORS_CHAT_ID,
+            PLAN_BANAN_GROUP_ID,
             f"{mention(TEAM['iroda'].username)} {mention(TEAM['sheroz'].username)} "
             f"Музыка и озвучка для «{ep['title']}» готовы! Можно делать анимацию.",
+            reply_to=TOPICS["music_voiceover"],
         )
         log.info(f"Episode {ep['id']} → анимация, animators notified")
 
@@ -359,21 +361,19 @@ async def daily_status_check():
         if not msg:
             continue
         
-        # Send to appropriate chat
-        if ep["status"] == "анимация":
-            await bot.send_message(ANIMATORS_CHAT_ID, msg)
+        # Send to appropriate topic
+        topic = {
+            "сценарий": TOPICS["scenarios_ru"],
+            "перевод": TOPICS["scenarios_uz"],
+            "озвучка_назначена": TOPICS["scenarios_uz"],
+            "музыка": TOPICS["music_voiceover"],
+            "анимация": TOPICS["music_voiceover"],
+        }.get(ep["status"])
+        
+        if topic:
+            await bot.send_message(PLAN_BANAN_GROUP_ID, msg, reply_to=topic)
         else:
-            topic = {
-                "сценарий": TOPICS["scenarios_ru"],
-                "перевод": TOPICS["scenarios_uz"],
-                "озвучка_назначена": TOPICS["scenarios_uz"],
-                "музыка": TOPICS["music_voiceover"],
-            }.get(ep["status"])
-            
-            if topic:
-                await bot.send_message(PLAN_BANAN_GROUP_ID, msg, reply_to=topic)
-            else:
-                await bot.send_message(PLAN_BANAN_GROUP_ID, msg)
+            await bot.send_message(PLAN_BANAN_GROUP_ID, msg)
     
     log.info("Daily check done")
 
@@ -394,7 +394,6 @@ async def collect_daily_context():
     
     chats_to_monitor = [
         (PLAN_BANAN_GROUP_ID, "План Банан (supergroup)"),
-        (ANIMATORS_CHAT_ID, "Отдел аниматоров"),
     ]
     
     for chat_id, chat_name in chats_to_monitor:
