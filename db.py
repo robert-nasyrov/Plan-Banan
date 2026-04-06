@@ -62,15 +62,15 @@ async def init_db(database_url: str):
 
 async def create_episode(conn, title: str) -> dict:
     """Create a new episode and return it."""
-    row = await conn.execute(
+    cur = conn.cursor(row_factory=dict_row)
+    await cur.execute(
         """INSERT INTO episodes (title, status) 
            VALUES (%s, 'сценарий') 
            RETURNING *""",
         (title,),
-        row_factory=dict_row
     )
     await conn.commit()
-    return await row.fetchone()
+    return await cur.fetchone()
 
 
 async def update_episode_status(conn, episode_id: int, new_status: str, **kwargs):
@@ -88,31 +88,32 @@ async def update_episode_status(conn, episode_id: int, new_status: str, **kwargs
     params.append(episode_id)
     query = f"UPDATE episodes SET {', '.join(sets)} WHERE id = %s RETURNING *"
     
-    row = await conn.execute(query, params, row_factory=dict_row)
+    cur = conn.cursor(row_factory=dict_row)
+    await cur.execute(query, params)
     await conn.commit()
-    return await row.fetchone()
+    return await cur.fetchone()
 
 
 async def get_active_episodes(conn) -> list[dict]:
     """Get all episodes not yet in 'готово' status."""
-    rows = await conn.execute(
-        "SELECT * FROM episodes WHERE status != 'готово' ORDER BY created_at",
-        row_factory=dict_row
+    cur = conn.cursor(row_factory=dict_row)
+    await cur.execute(
+        "SELECT * FROM episodes WHERE status != 'готово' ORDER BY created_at"
     )
-    return await rows.fetchall()
+    return await cur.fetchall()
 
 
 async def get_stalled_episodes(conn, stall_hours: int = 48) -> list[dict]:
     """Get episodes that haven't moved in stall_hours."""
-    rows = await conn.execute(
+    cur = conn.cursor(row_factory=dict_row)
+    await cur.execute(
         """SELECT * FROM episodes 
            WHERE status != 'готово' 
            AND updated_at < now() - interval '%s hours'
            ORDER BY updated_at""",
         (stall_hours,),
-        row_factory=dict_row
     )
-    return await rows.fetchall()
+    return await cur.fetchall()
 
 
 async def save_chat_summary(conn, chat_id: int, topic_id: int | None, summary: str, raw_messages: list):
