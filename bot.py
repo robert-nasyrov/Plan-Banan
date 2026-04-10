@@ -163,9 +163,22 @@ async def on_new_scenario(event):
     
     log.info(f"New scenario detected from {sender.username}")
     
-    # Create episode in DB
-    # Try to extract title from message
+    # Extract title from scenario text via Claude
+    text = event.message.text or ""
     title = f"Новая серия ({datetime.now().strftime('%d.%m')})"
+    if text:
+        try:
+            extracted = await ask_claude(
+                text[:500],
+                system="Из текста сценария мультфильма извлеки короткое название серии (тема). "
+                       "Ответь ТОЛЬКО названием, 2-5 слов. Без кавычек, без пояснений. "
+                       "Пример: Курбан Хаит, Самолёты, Море"
+            )
+            if extracted and len(extracted.strip()) < 50:
+                title = extracted.strip()
+        except Exception as e:
+            log.error(f"Title extraction failed: {e}")
+    
     episode = await create_episode(db_conn, title)
     await update_episode_status(
         db_conn, episode["id"], "перевод",
@@ -337,6 +350,84 @@ async def on_music_uploaded(event):
 
 
 # ──────────────────────────────────────────────
+# Event: Team member marks work as done
+# ──────────────────────────────────────────────
+
+DONE_KEYWORDS = ["готово", "сделано", "done", "готова", "всё готово", "все готово", "закончила", "закончил"]
+
+@bot.on(events.NewMessage(
+    chats=PLAN_BANAN_GROUP_ID,
+))
+async def on_done_message(event):
+    """Team member says 'готово' → advance pipeline."""
+    text = (event.message.text or "").lower().strip()
+    if not any(kw in text for kw in DONE_KEYWORDS):
+        return
+    
+    sender = await event.get_sender()
+    if not sender or not sender.username:
+        return
+    
+    username = sender.username
+    episodes = await get_active_episodes(db_conn)
+    if not episodes:
+        return
+    
+    # Find which stage this person is responsible for
+    stage_map = {
+        TEAM["mohinur"].username: "перевод",
+        TEAM["stas"].username: "музыка",
+        TEAM["iroda"].username: "анимация",
+        TEAM["sheroz"].username: "анимация",
+    }
+    
+    responsible_stage = stage_map.get(username)
+    if not responsible_stage:
+        return
+    
+    # Find episode in that stage
+    ep = next((e for e in episodes if e["status"] == responsible_stage), None)
+    if not ep:
+        return
+    
+    # Advance to next stage
+    next_stage_map = {
+        "перевод": ("озвучка_назначена", "translation_done_at"),
+        "музыка": ("анимация", "music_done_at"),
+        "анимация": ("готово", "animation_done_at"),
+    }
+    
+    next_info = next_stage_map.get(responsible_stage)
+    if not next_info:
+        return
+    
+    next_status, timestamp_field = next_info
+    await update_episode_status(
+        db_conn, ep["id"], next_status,
+        **{timestamp_field: datetime.now(pytz.utc)}
+    )
+    
+    # Notify next person
+    if next_status == "озвучка_назначена":
+        await bot.send_message(
+            PLAN_BANAN_GROUP_ID,
+            f"{mention(TEAM['robert'].username)} Перевод для «{ep['title']}» готов! "
+            f"Договорись с Камилой об озвучке.",
+            reply_to=TOPICS["scenarios_uz"],
+        )
+    elif next_status == "анимация":
+        await bot.send_message(
+            PLAN_BANAN_GROUP_ID,
+            f"{mention(TEAM['iroda'].username)} {mention(TEAM['sheroz'].username)} "
+            f"Музыка и озвучка для «{ep['title']}» готовы! Можно делать анимацию.",
+            reply_to=TOPICS["music_voiceover"],
+        )
+    
+    await event.reply(f"Принято! «{ep['title']}» → {next_status}")
+    log.info(f"Episode {ep['id']} «{ep['title']}» → {next_status} (by {username})")
+
+
+# ──────────────────────────────────────────────
 # Daily status check (cron 10:00 Tashkent)
 # ──────────────────────────────────────────────
 
@@ -467,8 +558,8 @@ async def main():
     
     # Scheduler
     scheduler = AsyncIOScheduler(timezone=TIMEZONE)
-    scheduler.add_job(daily_status_check, CronTrigger(hour=DAILY_CHECK_HOUR, minute=0))
-    scheduler.add_job(collect_daily_context, CronTrigger(hour=DAILY_CHECK_HOUR, minute=5))
+    scheduler.add_job(daily_status_check, CronTrigger(hour=DAILY_CHECK_HOUR, minute=0, timezone=TIMEZONE))
+    scheduler.add_job(collect_daily_context, CronTrigger(hour=DAILY_CHECK_HOUR, minute=5, timezone=TIMEZONE))
     scheduler.start()
     log.info(f"Scheduler started: daily check at {DAILY_CHECK_HOUR}:00 {TIMEZONE}")
     
