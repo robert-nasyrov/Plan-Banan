@@ -146,6 +146,73 @@ async def on_discover(event):
 
 
 # ──────────────────────────────────────────────
+# Command: /done — manually close an episode
+# ──────────────────────────────────────────────
+
+@bot.on(events.NewMessage(pattern='/done', from_users="nasyrov_robert"))
+async def on_done_command(event):
+    """Robert closes an episode manually. /done or /done серия_id"""
+    episodes = await get_active_episodes(db_conn)
+    if not episodes:
+        await event.reply("Нет активных серий.")
+        return
+    
+    # If just /done — close the oldest active episode
+    text = (event.message.text or "").strip()
+    parts = text.split(maxsplit=1)
+    
+    if len(parts) > 1:
+        # Try to find by ID or title fragment
+        query = parts[1].strip()
+        ep = None
+        # Try as ID
+        try:
+            ep_id = int(query)
+            ep = next((e for e in episodes if e["id"] == ep_id), None)
+        except ValueError:
+            # Try as title fragment
+            ep = next((e for e in episodes if query.lower() in e["title"].lower()), None)
+    else:
+        # Close the oldest active
+        ep = episodes[0]
+    
+    if not ep:
+        await event.reply(f"Серия не найдена. Активные:\n" + 
+            "\n".join(f"  {e['id']}. {e['title']} — {e['status']}" for e in episodes))
+        return
+    
+    await update_episode_status(
+        db_conn, ep["id"], "готово",
+        animation_done_at=datetime.now(pytz.utc),
+    )
+    await event.reply(f"«{ep['title']}» закрыта!")
+    log.info(f"Episode {ep['id']} «{ep['title']}» manually closed by Robert")
+
+
+# ──────────────────────────────────────────────
+# Command: /status — show active episodes
+# ──────────────────────────────────────────────
+
+@bot.on(events.NewMessage(pattern='/status', from_users="nasyrov_robert"))
+async def on_status_command(event):
+    """Show all active episodes and their status."""
+    episodes = await get_active_episodes(db_conn)
+    if not episodes:
+        await event.reply("Нет активных серий.")
+        return
+    
+    lines = []
+    for ep in episodes:
+        responsible_key = STATUS_RESPONSIBLE.get(ep["status"], "?")
+        member = TEAM.get(responsible_key)
+        name = member.name if member else "?"
+        days = (datetime.now(pytz.utc) - ep["updated_at"].replace(tzinfo=pytz.utc)).days if ep["updated_at"] else 0
+        lines.append(f"{ep['id']}. «{ep['title']}» — {ep['status']} ({name}, {days} дн)")
+    
+    await event.reply("Активные серии:\n" + "\n".join(lines))
+
+
+# ──────────────────────────────────────────────
 # Event: New scenario in "Сценарии RU"
 # ──────────────────────────────────────────────
 
